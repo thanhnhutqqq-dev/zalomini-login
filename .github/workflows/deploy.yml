@@ -13,8 +13,7 @@ jobs:
       APP_ID: ${{ secrets.ZMP_APP_ID }}
       ZMP_ACCESS_TOKEN: ${{ secrets.ZMP_ACCESS_TOKEN }}
       ZMP_ENVIRONMENT: ${{ secrets.ZMP_ENVIRONMENT }}
-      ZMP_TOKEN: ${{ secrets.ZMP_ACCESS_TOKEN }}
-      NEW_ACCESS_TOKEN: ${{ secrets.ZMP_ACCESS_TOKEN }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -41,8 +40,8 @@ jobs:
           const assetsDir = path.join(distDir, "assets");
           const configPath = path.join(process.cwd(), "app-config.json");
 
-          const cssBundle = fs.readdirSync(assetsDir).find((file) => file.startsWith("index-") && file.endsWith(".css"));
-          const jsBundle = fs.readdirSync(assetsDir).find((file) => file.startsWith("index-") && file.endsWith(".js"));
+          const cssBundle = fs.readdirSync(assetsDir).find(f => f.startsWith("index-") && f.endsWith(".css"));
+          const jsBundle = fs.readdirSync(assetsDir).find(f => f.startsWith("index-") && f.endsWith(".js"));
 
           if (!cssBundle || !jsBundle) {
             throw new Error("Không tìm thấy bundle index-*.css hoặc index-*.js trong dist/assets.");
@@ -51,7 +50,6 @@ jobs:
           const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
           config.listCSS = [`assets/${cssBundle}`];
           config.listSyncJS = [`assets/${jsBundle}`];
-
           fs.writeFileSync(path.join(distDir, "app-config.json"), JSON.stringify(config, null, 2));
           NODE
 
@@ -64,12 +62,14 @@ jobs:
       - name: Deploy with developer token
         run: |
           if [ -z "$APP_ID" ]; then
-            echo "APP_ID chưa được thiết lập trong secrets.ZMP_APP_ID" >&2
+            echo "❌ APP_ID chưa được thiết lập trong secrets.ZMP_APP_ID" >&2
             exit 1
           fi
           if [ -z "$ZMP_ACCESS_TOKEN" ]; then
-            echo "ZMP_ACCESS_TOKEN chưa được thiết lập trong secrets.ZMP_ACCESS_TOKEN" >&2
+            echo "❌ ZMP_ACCESS_TOKEN chưa được thiết lập trong secrets.ZMP_ACCESS_TOKEN" >&2
             exit 1
           fi
+
           ENVIRONMENT=${ZMP_ENVIRONMENT:-development}
-          script -qefc "npx zmp-developer-token deploy $APP_ID $ZMP_ACCESS_TOKEN --env $ENVIRONMENT"
+          echo "🚀 Deploying Zalo Mini App (App ID: $APP_ID, Env: $ENVIRONMENT)..."
+          npx zmp-developer-token deploy $APP_ID --env $ENVIRONMENT
