@@ -10,9 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      APP_ID: ${{ secrets.ZMP_ACCESS_TOKEN }}
+      APP_ID: ${{ secrets.ZMP_APP_ID }}
       ZMP_ACCESS_TOKEN: ${{ secrets.ZMP_ACCESS_TOKEN }}
       ZMP_ENVIRONMENT: ${{ secrets.ZMP_ENVIRONMENT }}
+      ZMP_TOKEN: ${{ secrets.ZMP_ACCESS_TOKEN }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
