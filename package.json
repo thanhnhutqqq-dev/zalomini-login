@@ -18,7 +18,8 @@
     "start": "zmp start",
     "deploy": "zmp deploy",
     "build:css": "postcss src/css/tailwind.css -o src/css/styles.css",
-    "dev:api": "node server/index.js"
+    "dev:api": "node server/index.js",
+    "build": "vite build"
   },
   "dependencies": {
     "cors": "^2.8.5",
