@@ -1,8 +1,6 @@
-# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
-
 name: Zalo Mini App
-run-name: ${{ github.event_name == 'schedule' && '✨ Refresh token' || '🚀 Deploy' }}
+
+run-name: ${{ github.event_name == 'schedule' && 'Refresh Zalo tokens' || 'Deploy Zalo Mini App' }}
 
 concurrency: zalo-mini-app
 
@@ -22,51 +20,116 @@ jobs:
   refresh_token:
     if: ${{ github.event_name == 'schedule' }}
     runs-on: ubuntu-latest
-
+    timeout-minutes: 10
+    env:
+      ZALO_APP_ID: ${{ secrets.ZALO_APP_ID }}
+      ZALO_APP_SECRET: ${{ secrets.ZALO_APP_SECRET }}
+      ZALO_REFRESH_TOKEN: ${{ secrets.ZALO_REFRESH_TOKEN }}
     steps:
-      - uses: actions/checkout@v3
-      - name: Use Node.js 18.x
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
         with:
-          node-version: 18.x
-          cache: "npm"
-      - run: npx zmp-developer-token login ${{ secrets.ZALO_APP_ID }} ${{ secrets.ZALO_APP_SECRET }} ${{ secrets.ZALO_REFRESH_TOKEN }} >> $GITHUB_ENV
-      - uses: hmanzur/actions-set-secret@v2.0.0
+          node-version: 18
+          cache: npm
+
+      - name: Renew access token
+        run: |
+          npx zmp-developer-token login "$ZALO_APP_ID" "$ZALO_APP_SECRET" "$ZALO_REFRESH_TOKEN" >> $GITHUB_ENV
+
+      - name: Update stored secrets
+        uses: hmanzur/actions-set-secret@v2.0.0
         with:
           name: "ZALO_ACCESS_TOKEN"
           value: ${{ env.NEW_ACCESS_TOKEN }}
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
-      - uses: hmanzur/actions-set-secret@v2.0.0
+
+      - name: Update refresh token
+        uses: hmanzur/actions-set-secret@v2.0.0
         with:
           name: "ZALO_REFRESH_TOKEN"
           value: ${{ env.NEW_REFRESH_TOKEN }}
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
       - name: Report
         run: |
-          echo "### Token renewal success! :sparkles:" >> $GITHUB_STEP_SUMMARY
+          echo "### Token renewal success :sparkles:" >> $GITHUB_STEP_SUMMARY
 
   deploy:
     if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        mini-app-id: ["194839900003483517"]
-
+    timeout-minutes: 20
+    env:
+      APP_ID: ${{ secrets.ZALO_APP_ID }}
+      ZALO_ACCESS_TOKEN: ${{ secrets.ZALO_ACCESS_TOKEN }}
+      ENVIRONMENT: ${{ secrets.ZMP_ENVIRONMENT || 'development' }}
     steps:
-      - uses: actions/checkout@v3
-      - name: Use Node.js 18.x
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
         with:
-          node-version: 18.x
-          cache: "npm"
-      - run: npm install
-      - run: npm install -g zmp-cli
-      - run: npx zmp-developer-token deploy ${{ matrix.mini-app-id }}
-        env:
-          NEW_ACCESS_TOKEN: ${{ secrets.ZALO_ACCESS_TOKEN }}
+          node-version: 18
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install ZMP CLI
+        run: npm install -g zmp-cli
+
+      - name: Build front-end
+        run: npx zmp build
+
+      - name: Sync hashed bundles into app-config.json
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Update-AppConfig {
+            param(
+              [string]$distPath,
+              [string]$configPath
+            )
+
+            $assetsPath = Join-Path $distPath 'assets'
+            if (-not (Test-Path $assetsPath)) {
+              throw "Không tìm thấy thư mục assets tại $assetsPath"
+            }
+
+            $cssBundle = Get-ChildItem -Path $assetsPath -Filter 'index-*.css' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            $jsBundle  = Get-ChildItem -Path $assetsPath -Filter 'index-*.js'  | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+
+            if (-not $cssBundle -or -not $jsBundle) {
+              throw 'Không tìm thấy bundle index-*.css hoặc index-*.js trong dist/assets.'
+            }
+
+            $config = Get-Content $configPath | ConvertFrom-Json
+            $config.listCSS     = @("assets/$($cssBundle.Name)")
+            $config.listSyncJS  = @("assets/$($jsBundle.Name)")
+            $config.listAsyncJS = @()
+
+            $config | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $distPath 'app-config.json')
+          }
+
+          Update-AppConfig -distPath (Join-Path $PWD 'dist') -configPath (Join-Path $PWD 'app-config.json')
+
+      - name: Prepare www directory
+        run: |
+          rm -rf www
+          mkdir www
+          cp -r dist/* www/
+
+      - name: Login with access token
+        run: |
+          printf '%s\n' "$ZALO_ACCESS_TOKEN" | APP_ID="$APP_ID" zmp login
+
+      - name: Deploy
+        run: zmp deploy --env "$ENVIRONMENT"
+
       - name: Report
         run: |
-          echo "### Deployment success! :rocket:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY # this is a blank line
-          echo "View your deployment result: [Version Management](https://mini.zalo.me/miniapp/${{ matrix.mini-app-id }}/versions/list)" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment success :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "View deployment: https://mini.zalo.me/miniapp/${APP_ID}/versions/list" >> $GITHUB_STEP_SUMMARY
