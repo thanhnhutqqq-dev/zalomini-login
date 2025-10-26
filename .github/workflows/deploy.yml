@@ -70,4 +70,4 @@ jobs:
             exit 1
           fi
           ENVIRONMENT=${ZMP_ENVIRONMENT:-development}
-          script -qefc "npx zmp-developer-token deploy $APP_ID --env $ENVIRONMENT"
+          script -qefc "npx zmp-developer-token deploy $APP_ID $ZMP_ACCESS_TOKEN --env $ENVIRONMENT"
